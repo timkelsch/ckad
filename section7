@@ -1,0 +1,172 @@
+Services:
+Enable connectivity between groups of pods, end users, and external dependencies
+
+Types of Services:
+- NodePort:
+  - Maps a port on the node to a port on the pod
+  - NodePort is external facing and must be 30000-32767
+  - Port is internal facing on the Service
+  - TargetPort is the port on the target pod that traffic gets routed to
+  - When there is more than one pod:
+    - LB Algorithm: Random
+    - Session Affinity: Yes 
+  - If there are multiple pods in multiple nodes, you can access the service on any node.
+
+=== service-definition.yml
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-service
+spec:
+  type: NodePort
+  ports:
+  - targetPort: 80
+    port: 80
+    nodePort: 30008
+  selector: # these link the service to the pod(s)
+    app: myapp
+    type: front-end
+===
+
+- ClusterIP:
+  - Groups pods of a type together so they can be easily accessed within the cluster
+  - Only for internal cluster comms
+=== service-definition
+apiVersion: v1
+kind: Service
+metadata:
+  name: back-end
+spec:
+  type: ClusterIP
+  ports:
+  - targetPort: 80
+    port: 80
+  selector:
+    app: myapp
+    type: backend
+===
+
+- LoadBalancer: 
+
+
+Ingress Networking:
+Basically a layer 7 load balancer with SSL options.
+Need a deployment, service, configMap, and serviceAccount to deploy it.
+Can route to multiple apps via path or domain. 
+
+
+Ingress Controller:
+=== ingress-controller.yml
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: nginx-ingress-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: nginx-ingress
+  template:
+    metadata:
+      labels:
+        name: nginx-ingress
+    spec:
+      containers:
+      - name: nginx-ingress-controller
+        image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.21.0
+      args:
+      - /nginx-ingress-controller
+      - --configmap=$(POD_NAMESPACE)/nginx-configuration
+      env:
+      - name: POD_NAME
+        valueFrom:
+	  fieldRef:
+	    fieldPath: metadata.name
+      - name: POD_NAMESPACE
+        valueFrom:
+	  fieldRef:
+	    fieldPath: metadata.namespace
+      ports:
+      - name: http
+        containerPort: 80
+      - name: https
+        containerPort: 443
+      selector:
+        name: nginx-ingress
+===
+
+Ingress Resource:
+Use rules to define routing. 
+One rule per domain name.
+Each rule can have multiple paths
+
+=== ingress-wear.yml
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-wear
+spec:
+  backend:
+    serviceName: wear-service
+    servicePort: 80
+===
+
+=== ingress-wear-watch.yml
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-wear-watch
+spec:
+  rules: 
+  - http:
+    paths:
+    - path: /wear
+      backend:
+        serviceName: wear-service
+	servicePort: 80
+    - path: /watch
+      backend:
+        serviceName: watch-service
+	servicePort: 80
+  - host: belts.my-online-store.com
+    http:
+      paths:
+      - backend:
+        serviceName: belts-service
+	servicePort: 80
+===
+
+Imperative:
+kubectl create ingress ingress-test --rule="wear.my-store.com/wear*=wear-service:80"
+
+
+Network Policies:
+Ingress or egress traffic is only affected if they are included in policyTypes.
+
+=== network-policy.yml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-policy
+spec:
+  podSelector:
+    matchLabels:
+      role: db
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+      matchLabels:
+        name: api-pod
+      namespaceSelector:
+        matchLabels:
+	  name: prod
+    - ipBlock:
+        cidr: 192.168.1.1/32
+    ports:
+    - protocol: TCP
+      port: 3306
+===
+
+

@@ -1,0 +1,125 @@
+SECURITY
+
+Authentication:
+- End user auth is handled by the app itself
+- K8S does not manage users directly. Relies on files or 3rd party.
+- It does allow serviceAccounts
+
+kube-apiserver authenticates users when they run kubectl
+auth and token files are not recommended because they are insecure
+files require volume mount to provide files
+- static PW file
+  csv file with PW, UN, UID, [GID] that specified with --basic-auth-file when starting kube-apiserver
+  /etc/kubernetes/manifests/kube-apiserver.yaml
+  To auth: curl -v -k https://master-ip:6443/api/v1/pods -u "user1:password"
+- static token file
+  - csv file with token, UN, UID, [GID]
+  - specify file with --token-auth-file when starting kube-apiserver
+  - To auth: curl -v -k https://master-ip:6443/api/v1/pods --header "Authorization: Bearer [token]"
+- certificates
+  
+- Identity services
+
+
+Specifying certs in config file:
+=== $HOME/.kube/config
+--server my-server:6443
+--client-key admin.key
+--client-certificate admin.crt
+--certificate-authority ca.crt
+===
+This will allow the configs to be used automatically when you run kubectl
+
+KubeConfig File:
+=== $HOME/.kube/config
+apiVersion: v1
+kind: Config
+current-context: my-kube-admin@my-playground # sets default context
+clusters:
+- name: my-playground
+  cluster: 
+    certificate-authority: /etc/kubernetes/pki/ca.crt
+    server: https://my-playground:6443
+contexts:
+- name: my-kube-admin@my-playground
+  context:
+    cluster: my-playground
+    user: my-admin
+    namespace: finance # sets default namespace
+users:
+- name: my-admin
+  user:
+    client-certificate: admin.crt
+    client-key: admin.key
+===
+
+Update current context:
+kubectl config use-context another@another
+
+
+kubectl proxy: allows you to curl kubeapi without auth
+kube proxy: enables connectivity between nodes and pods
+
+all resources in K8S are grouped into API groups, 
+- Core/legacy: /api/v1
+- Named groups: /apis/$GROUP_NAME/$VERSION
+  IE /apis/apps|storage.k8s.io|extensions/v1
+
+
+AUTHORIZATION
+
+What are you authorized to do?
+
+Mechanisms:
+- Node: 
+- Attribute Based: JSON file with users/groups
+- Role Based: 
+- Webhook: Enables 3rd party tools like Open Policy Agent
+- Always allow
+- Always deny
+
+- Set using --authorization-mode in config file
+- When using multiple modes, you use each one in the order specified.
+- When a module denies, we go to the next module in the list. When approved, that's it.
+
+ RBAC:
+=== dev-role.yml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev
+rules:
+- apiGroups: [""]
+  resources: ["Pods"]
+  verbs: ["list", "get", "create"]
+===
+
+Role to User Binding:
+=== devuser-dev-binding.yml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: devuser-dev-binding
+subjects:
+- kind: User
+  name: dev-user
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: Dev
+  apiGroup: rbac.authorization.k8s.io
+===
+
+Check Access:
+kubectl auth can-i create deployments
+kubectl auth can-i create deployments --as dev-user --namespace test
+
+Check auth mode:
+***kubectl describe pod kube-apiserver-controlplane -n kube-system
+
+kubectl create role -h
+kubectl create rolebinding -h
+
+How do you specify namespace when fucking with roles/rolebindings?
+
+

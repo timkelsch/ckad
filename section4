@@ -1,0 +1,33 @@
+Multi-Container Pods:
+
+Design Patterns:
+- Sidecar: Log agent along side web server
+- Adapter: Processes logs from many apps to normalize to single format before sending.
+- Ambassador: Connects to one of three DBs based on the environment
+https://medium.com/swlh/pattern-sidecars-ambassadors-and-adapters-containers-ec8f4140c495
+
+
+Init Containers:
+They start when the pod starts, run to completion, and die. each init container is run one at a time in sequential order.
+- Pulls data from a repo
+- Waits for external dependencies to be up
+
+=== pod-definition.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp-pod
+  labels:
+    app: myapp
+spec:
+  containers:
+  - name: myapp-container
+    image: busybox:1.28
+    command: ['sh', '-c', 'echo The app is running! && sleep 3600']
+  initContainers:
+  - name: init-myservice
+    image: busybox
+    command: ['sh', '-c', 'git clone <some-repository-that-will-be-used-by-application> ;']
+===
+
+

@@ -1,0 +1,84 @@
+VOLUMES
+
+Volumes:
+=== pod-definition.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: randon
+spec:
+  containers:
+  - image: alpine
+    name: alpine
+    command: whocares
+    volumeMounts:
+    - mountPath: /opt
+      name: data-volume
+  volumes:
+  - name: data-volume
+    hostPath:
+      path: /data
+      type: Directory
+===
+This creates a volume on the local node to persist data. Not good for multi node clusters.
+
+
+Persistent Volumes:
+Cluster wide pool of storage that can be claimed by pods using persistent volume claims.
+=== pv-definition.yml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-vol
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 1Gii
+  
+===
+
+
+Persistent Volume Claims:
+Allows nodes to claim storage provided by persistent storage volumes. Tries to match based on attributes requested. Can also claim specific storage with selectors and labels. 
+- There is a 1 to 1 relationship between PVCs and PVs so if the PVC does not request the whole PV, the rest cannot be used by other PVCs.
+- If no PV satisfies the PVC attributes, it will remain in Pending state until a PV is available
+
+===  pvc-definition.yml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myclaim
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+===
+
+=== pod-definition.yml
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: mypod
+    spec:
+      containers:
+        - name: myfrontend
+          image: nginx
+          volumeMounts:
+          - mountPath: "/var/www/html"
+            name: mypd
+      volumes:
+        - name: mypd
+          persistentVolumeClaim:
+            claimName: myclaim
+===
+
+You can set what happens to PVCs when they are deleted with:
+persistentVolumeReclaimPolicy: Retain|Delete|Recycle
+
+
+https://kubernetes.io/docs/concepts/storage/#types-of-volumes
+
+

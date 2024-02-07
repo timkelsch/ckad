@@ -1,0 +1,350 @@
+ENTRYPOINT and CMD in Dockerfile
+- CMD can be overridden with command in: docker run nginx sleep 5
+- Pass in argument by concatenating command. "ENTRYPOINT sleep" and "docker run nginx 5"
+- Have default value but allow passed argument:
+  - ENTRYPOINT ["sleep"]; CMD ["5"]
+  - docker run nginx 10
+- Override ENTRYPOINT: docker run --entrypoint sleep2.0 nginx 10
+
+
+command overrides ENTRYPOINT
+args overrides CMD
+===
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    args: ["10"]
+    command: ["sleep2.0"]
+===
+- If ENTRYPOINT and CMD are provided, they are executed on startup as:
+    ENTRYPOINT CMD
+- If ENTRYPOINT and CMD are provided and only "command:" is provided in yaml file, then CMD is ignored in Dockerfile.
+
+To edit parts of a pod that aren't editable with kubectl edit:
+- kubectl get pod webapp -o yaml > my-new-pod.yml
+- Update the file
+- Delete the existing pod
+- Create new pod with file
+
+Deployments, you can edit any pod spec field and it will get sorted.
+
+
+ConfigMaps:
+Put your env vars into a configMap to manage them centrally. Then reference items in that file from your other spec files:
+
+Imperative:
+kubectl create configmap CM_NAME --from-literal=<key>=<value>
+kubectl create configmap CM_NAME --from-file=app_config.properties
+
+Via YML File:
+=== app-config.yml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  APP_COLOR: blue
+  SSM_PARAM: donkey_chaser
+===
+kubectl create -f config-map.yml
+
+Use in pod definition:
+===
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp-color
+spec:
+  containers:
+  - name: simple-webapp-colors
+    image: simple-webapp-colors
+    envFrom:
+    - configMapRef: #inject all vars in the file
+      name: app-config
+    env:
+    - name: APP_COLOR
+      valueFrom:
+        configMapKeyRef:
+	  name: app-config
+	  key: APP_COLOR
+    volumes:
+    - name: app-config-volume
+      configMap:
+        name: app-config
+
+Secrets:
+imperative
+- kubectl create secret generic SECRET_NAME --from-literal=<key>=<value>
+- kubectl create secret generic SECRET_NAME --from-file=<path-to-file>
+
+declaritive
+=== secret.yml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+data:
+  DB_PASSWORD: ligmasugma # encode it using: echo -n 'ligmasugma' | base64
+===
+
+To view secret values:
+-  kubectl get secret app-secret -o yaml
+- decode the value: echo -n 'bXlzcwW=' | base64 --decode
+
+Using secrets in pods:
+=== pod-definition.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp-color
+spec:
+  containers:
+  - name: simple-webapp-color
+    image: simple-webapp-color
+    envFrom:
+    - secretRef:
+        name: app-secret
+    env:
+    - name: DB_PASSWORD
+      valueFrom:
+        secretRefKey:
+	  name: app-secret
+	  key: DB_PASSWORD
+    volumes:
+    - name: app-secret-volume
+      secret:
+        secretName: app-secret # each key would be a file and the value would be in clear text in the file
+===
+
+
+Security:
+Add and remove linux capabilities when running containers:
+docker run --cap-add MAC_ADMIN nginx
+docker run --cap-drop MAC_ADMIN nginx
+
+These can be configured in K8S as well at a container and pod level.
+Settings configured at the pod level will take effect on containers in that pod.
+Settings on the container will supersede pod level settings
+
+=== pod-definition.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-pod
+spec:
+  securityContext: # security context set at pod level
+    runAsUser: 1000
+  containers:
+  - name: nginx
+    image: nginx
+    securityContext: # security context set at container level
+      runAsUser: 1000
+      capabilities: # capabilities can only be set at container level
+        add: ["MAC_ADMIN"]
+===
+
+
+Service Accounts:
+kubectl create serviceaccount dashboard-sa
+kubectl create token dashboard-sa # shows time bound token on the screen
+kubecrl describe serviceaccount dashboard-sa
+kubectl describe secret <token_from_previous_command>
+OR - if the application is hosted in your cluster, mount the secret as a volume
+each namespace automatically gets a default service account. its token is mounted to every pod in that namespace at /var/run/secrets/kubernetes.io/serviceaccount/token
+Only has permission to run basic API commands
+
+To use your own service account:
+=== pod-definition.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-k8s-dashboard
+spec:
+  containers:
+  - name: my-k8s-dashboard
+    image: my-k8s-dashboard
+  serviceAccountName: dashboard-sa
+  automountServiceAccountToken: false # prevent default service account secret vol from being mounted
+===
+
+To create a non-time bound service account token, first create the service account. Then:
+=== secret-definition.yml
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/service-account-token
+metadata:
+  name: my-secret-name
+  annotations: kubernetes.io/service-account.name: dashboard-sa
+
+
+Resource Requirements:
+kube-scheduler decides where a workload should go
+if there are insufficient resources on all pods, it will remain in pending status
+
+Container/Pod level resources:
+=== pod-definition.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    resources:
+      requests:
+        memory: "4Gi"
+	cpu: 2
+      limits:
+        memory: "6Gi"
+	cpu: 3
+===
+1 CPU = 1 hyperthread, 1 cloud CPU/core
+When a pod exceeds CPU limit, it is throttled.
+When a pod exceeds RAM limit, it will be terminated with OOM error
+By default, pods can assume unlimited resources
+If limits are set but requests are not, requests are equal to limits
+If pod 1 is hitting its limits, but pod 2 is not, there is available capacity. Not ideal.
+If requests are set but limits aren't, that's ideal because you're not leaving capacity on the table
+
+LimitRange allows defaults to be set for CPU and RAM of Containers or Pods within a namespace.
+=== limit-range.yml
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: resource-constraint
+spec:
+  limits:
+    - default:
+        cpu: 500m # default limit
+	memory: "1Gi"
+      defaultRequest:
+        cpu: 250m # default request
+	memory: ".5Gi"
+      min:
+        cpu: 100m # actual minimum
+	memory: ".25Gi"
+      max:
+        cpu: 1000m # actual limit
+	memory: "2Gi"
+      type: Container|Pod|PersistentVolumeClaim 
+===
+
+ResourceQuotas set hard limits for CPU/RAM for all pods in a namespace.
+=== resource-quota.yml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: my-rq
+spec:
+  hard: 
+    requests.cpu: 4
+    requests.memory: 4Gi
+    limits.cpu: 10
+    limits.memory: 10Gi
+===
+
+
+Taints and Tolerations:
+Tells the node to only accept pods with certain tolerations.
+
+Taint-effects:
+- NoSchedule: Do not schedule certain pods on this node
+- PreferNoSchedule: Do not schedule certain pods on this node unless it's necessary
+- NoExecute: Do not schedule certain pods on this node and evict any existing pods
+
+To taint node node1 so that pods with app=blue cannot be scheduled on it:
+kubectl taint nodes node1 app=blue:NoSchedule
+
+Tolerations:
+=== pod-definition.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+spec:
+  containers:
+  - name: nginx-controller
+    image: nginx
+  tolerations:
+  - key: "app"
+    operator: "Equal"
+    value: "blue"
+    effect: "NoSchedule"
+===
+
+By default, a NoExecute taint is set on master nodes.
+
+
+Node Selectors:
+Allows you to set which node(s) pod(s) should run on directly. Works by matching nodeSelector definition on pods to labels on nodes. Limitations: can't do any logic beyond this basic matching.
+
+First, label the node:
+kubectl label nodes node_name KEY=VALUE
+kubectl label nodes node1 size=Large
+
+Then add nodeSelector to pod spec:
+=== pod-definition.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+  nodeSelector:
+    size: Large
+===
+
+
+Node Affinity:
+Provides advanced logic to determine which pods live on which nodes.
+
+Node Affinity Types:
+- requiredDuringSchedulingIgnoredDuringExecution
+- preferredDuringSchdeulingIgnoredDuringExecution
+- (Planned) requiredDuringSchedulingRequiredDuringExecution
+
+NodeAffinity Operators:
+- In
+- NotIn
+- Exists
+- DoesNotExist
+- Gt
+- Lt
+
+
+First, set pod labels. Then set node affinity:
+=== pod-definition.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  containers:
+    name: nginx
+    image: nginx
+  affinity:
+    nodeAffinity:
+     requiredDuringSchedulingIgnoredDuringExecution:
+       nodeSelectorTerms:
+       - matchExpressions:
+         - key: size
+	   operator: In|NotIn|Exists
+	   values:
+	   - Large
+===
+
+
+Certification Tips:
+
+
+
+In the test, how am i going to get the format of the env var shit inside pods?
+

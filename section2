@@ -1,0 +1,238 @@
+Node/Minion = host
+Cluster = group of nodes
+Master = separate management node
+Components:
+- API server
+- etcd: stores cluster metadata. KV store
+- Scheduler: Responsible for distributing work across nodes
+- Controller: Brain behind orchestration. Manage failed nodes
+- Container Runtime: Docker
+- kubelet: agent that runs on each node in the cluster. Makes sure that containers are running on nodes as expected
+
+Master vs Worker Nodes:
+- Worker nodes have docker and kubelet installed. 
+- Master nodes have etcd, kube-apiserver, controller, scheduler
+
+kubectl is the CLI interface
+- kubectl run hello-minikube # create a cluster
+- kubectl cluster-info
+- kubectl get nodes
+
+Docker vs Containerd:
+- K8S supports docker and OCI (rkt, lxc)
+- Docker shim was removed in 1.24
+- Docker images follow OCI spec
+
+Containerd:
+- Can be installed separately from Docker
+- ctr is a CLI for debugging containerd
+- nerdctr is user friendly
+-- supports encrypted images
+-- lazy pulling
+-- image signing and verifying
+-- namespaces in Kubernetes
+- Basically replace docker with nerdctl
+
+crictrl:
+- provides a CLI for CRI compatible container runtimes
+- used to inspect and debug container runtimes
+- not used to create containers
+
+Pods: 
+- k8s doesn't deploy images directly
+- it deploys pods on nodes
+- pods are the smallest object you can create in k8s
+- if we need more capacity, we create another pod. add another node if necessary
+- pods usually have a 1 to 1 relationship with containers running your app
+- do not add additional containers to a pod to scale
+- single pod can have multiple containers, but they're usually different images
+- Create a pod: kubectl run nginx --image nginx
+- List pods: kubectl get pods
+
+
+Pods with YAML:
+- pod-definition.yml:
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp-prod
+  labels:
+    app: myapp
+    type: front-end
+spec:
+  containers:
+    - name: nginx-container
+      image: nginx
+to create a pod from this definition:
+- kubectl create -f pod-definition.yml
+check on your new pod:
+- kubectl get pods
+- kubectl describe pod myapp-pod
+
+To create a pod definition file from an existing pod:
+kubectl get pod POD_NAME -o yaml > pod-definition.yml
+update it, kill and restart the pod OR
+kubectl edit pod POD_NAME
+
+
+K8S Replication Controllers:
+- can create new pods on one or more nodes
+- Replication controller: older tech being replaced by replicaSets
+- Create a replication controller: vim tc-definition.yml:
+===
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: myapp-rc
+  labels:
+    app: myapp
+    type: front-end
+spec:
+  replicas: 3
+  template:
+    metadata:
+      name: myapp-prod
+      labels:
+        app: myapp
+	type: frontPod
+    spec:
+      containers:
+      - name: nginx-controller
+        image: nginx
+    container:
+    - name: myapp
+      image: nginx
+===
+kubectl create -f rc-definition.yml
+kubectl get replicationcontroller
+kubectl get pods
+
+- replicaset-definition.yml
+===
+apiVersion: apps/v1
+kind: replicaSet
+metadata:
+  name: myapp
+  labels:
+    app: myapp
+    type: front-end
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+      type: front-end
+  template:
+    metadata:
+      name: myapp
+      type: front-end
+    spec:
+      containers:
+      - name: nginx-container
+        image: nginx
+===
+kubectl create -f replicaset-definition.yml
+kubectl get replicaset
+kubectl get pods
+
+You can use replicasets to manage existing pods. Use the selector.
+Selector is a required attribute in both replicationcontrollers and replicaset objects.
+
+To scale a replicaSet:
+- Update the definition file to change the value of the replicas key
+- Run: kubectl replace -f FILE_NAME
+OR
+- kubectl scale --replicas 6 -f FILE_NAME
+- kubectl scale --replicas 6 replicaset APP_NAME
+- This does not update the definition file
+
+
+K8S Deployments:
+Used to create and manage replicaSets and pods
+===
+apiVersion: apps/v1
+kind: 
+metadata:
+  name: myapp
+  labels:
+    app: myapp
+    type: front-end
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+      type: front-end
+  template:
+    metadata:
+      name: myapp
+      type: front-end
+    spec:
+      containers:
+      - name: nginx-container
+        image: nginx
+===
+kubectl create -f deployment-definition.yml
+kubectl get deployments
+kubectl get replicasets
+kubectl get pods
+
+Great command to show all objects:
+kubectl get all
+
+
+Namespaces:
+- Members of a namespace can refer to each other by name.
+- Members outside a namespace must be referred to by name.NAMESPACE.svc.cluster.local where svc is for service and cluster.local is the domain.
+kubectl get pods --namespace=NAMESPACE
+kubectl get pods --all-namespaces
+kubectl create -f pod-definition.yml --namespace 
+
+Create a namespace:
+kubectl create namespace NAME
+===
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev-namespace
+===
+kubectl create -f namespace.yml
+
+Move to a different namespace:
+kubectl config set-context $(kubectl config current-context) --namespace=dev
+
+Resource Quotas:
+===
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute-quota
+  namespace: dev
+spec:
+  hard:
+    pods: "10"
+    requests.cpu: "4"
+    requests.memory: 5Gi
+    limits.cpu: "10"
+    limits.memory: 10Gi
+===
+kubectl create -f rq-definition.yml
+
+
+Imperative commands:
+Create a pod:
+kubectl run nginx --image=nginx --dry-run=client -o yaml > nginx-pod.yml
+
+Create a service: 
+kubectl expose pod redis --port 6379 --name redis-service 
+OR
+kubectl create service clusterip redis --tcp=6379:6379
+
+Create an nginx pod exposing external port 8080 to node port 80:
+kubectl run mynginx --image=nginx --port=8080 --expose 
+
+You can create a pod with no --port then create a service to listen on that pod later. 
+You can create a pod that listens on a port, then create a service to listen on the same port, and the service will provide another IP on which the port is exposed.
+You can set a service to serve on a different port than it listens on. 
+You cannot set a pod to serve on a different port than its app serves on.
+

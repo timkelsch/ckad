@@ -1,0 +1,199 @@
+POD DESIGN
+
+Labels, Selectors, and Annotations
+Labels: Properties attached to each item.
+Selectors: Help you filter items based on labels
+
+=== pod-definition.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webapp
+  labels:
+    app: App1
+    function: front-end
+spec:
+  containers:
+  - name: webapp
+    image: nginx
+===
+kubectl get pods --selector app=App1
+
+ReplicaSet:
+Labels defined at the pod level are used to connect the ReplicaSet to the pod.
+On creation, if the labels match, the objects are created successfully.
+
+Same goes for services.
+
+
+Annotations:
+Annotations are used to record other data for informatory purposes.
+=== replicaset-definition.yml
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: webapp
+  labels:
+    app: App1
+    function: front-end
+  annotations:
+    buildversion: 1.34
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: App1
+  template:
+    metadata:
+      labels:
+        app: App1
+    spec:
+      containers:
+      - name: webapp
+        image: nginx
+===
+kubectl get pods --selector env=prod,bu=finance,tier=frontend
+
+
+Rollout and Versioning:
+When you create a deployment, it triggers a rollout which creates a new deployment revision.
+
+You can roll back to a previous version of a deployment with deployment revision.
+
+To see the rollout history:
+kubectl rollout history deployment/MY_DEPLOYMENT
+
+Check rollout status:
+kubectl rollout status deployment/MY_DEPLOYMENT
+
+
+Deployment Strategy:
+- Recreate: Kill all pods. Create new pods. Creates downtime.
+- Rolling: DEFAULT Kill one pod, create one new pod. Repeat until done.
+
+To perform update:
+- Change the image in the deployment-definition.yml file
+- kubectl apply -f deployment-definition.yml
+OR
+kubectl set image deployment/APP_NAME CONTAINER_NAME=IMAGE_NAME
+kubectl set image deployment/myapp-deployment nginx-container=nginx:1.9.1
+# the second one does not update the YML file (not smart)
+
+Upgrade:
+How it works under the hood: 
+Creates a new replicaSet, begins populating it. At the same time, it kills pods in the old replicaSet.
+
+Rollback:
+kubectl rollout undo deployment/DEPLOYMENT_NAME
+
+Create a deployment:
+kubectl create deployment nginx --image=nginx:1.16
+
+Check the rollout status:
+kubectl rollout status deployment nginx
+
+Check rollout history:
+kubectl rollout history deployment nginx
+
+Check the status of each revision:
+kubectl rollout history deployment nginx --revision=1
+
+Record the command used to set the image of a container in a deployment and record the command:
+kubectl set image deployment nginx nginx=nginx:1.17 --record
+
+Show that the command was recorded:
+kubectl rollout history deployment nginx
+
+Roll back a change:
+kubectl rollout undo deployment nginx --to-revision=1
+
+
+Blue/Green Deployments:
+It's done manually:
+- You have a deployment under a service, linked by a label on the pods == selector on service
+- Create a second deployment with the new image version with an according label
+- Once tests pass on the new deployment, update the service selector to match the label on the pods on the new deployment
+
+=== service-deployment.yml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:
+    version: v1
+===
+
+
+Canary Updates:
+- You have a deployment under a service. Linked by a label on the pods == selector on service.
+- Create a second deployment with new image version. Label version label is different. App label is identical.
+- Route a small % of traffic to the new pod by having only one replica since traffic is equally routed to all pods and the original/main pod has more replicas.
+- Once canary passes, remove the second/new deployment and perform a rolling upgrade on the original deployment.
+
+
+Jobs:
+Start a pod to complete a task and then dies.
+
+=== pod-definition.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: jobber
+spec:
+  containers:
+  - name: jobber
+    image: busybox
+  restartPolicy: Never
+===
+OR
+=== job-definition.yml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: math-job
+spec:
+  completions: 3
+  parallelism: 3
+  template:
+    spec:
+      containers:
+      - name: job-add
+        image: busybox
+	command: ['expr', '3', '+', '2']
+      restartPolicy: Never
+===
+- Pods are created sequentially once the last one finishes - by default.
+- To change this, use the parallelism attribute.
+- A job creates one or more Pods and will continue to retry execution of the Pods until a specified number of them successfully terminate. 
+- As pods successfully completed, the Job tracks the successful completions. Deployment can't do this.
+- Jobs can't use a replica set to replicate the pods.
+- You can't use cronjob with deployments.
+
+
+CronJob:
+=== cron-job-definition.yml
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: reporting
+spec:
+  schedule: "*/1 * * * *"
+  jobTemplate:
+    spec:
+      completions: 3
+      parallelism: 3
+      template:
+        spec:
+	  containers:
+	  - name: reporting
+	    image: reporting
+	  restartPolicy: Never
+===
+kubectl create -f cron-job-definition.yml
+kubectl get cronjob
+
+to check logs for all pods in a job:
+kubectl logs -l job-name=<job-name>
+
+A pod definition file named throw-dice-pod.yaml is given. The image throw-dice randomly returns a value between 1 and 6. 6 is considered success and all others are failure. Try deploying the POD and view the POD logs for the generated number.

@@ -1,0 +1,68 @@
+OBSERVABILITY
+
+Pod Lifecycle:
+Pod Status:
+- Pending: Scheduler tries to find a place to put it
+- ContainerCreating: Images pulled and container starts
+- Running
+
+Get pod status: 
+- kubectl get pods
+- kubectl describe pods POD_NAME
+
+Pod Conditions:
+Array of true/false values that tell us the state of the pod
+- PodScheduled
+- Initialized
+- ContainersReady
+- Ready
+
+
+Readiness Probe:
+Checks whether the pod is ready to serve traffic
+=== pod-definition.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  containers:
+  - name: webapp
+    image: nginx
+    readinessProbe:
+      httpGet:
+        path: /api/ready
+        port: 8080
+      tcpSocket:
+        port: 3306
+      exec:
+        command:
+	- cat
+	- /app/is-ready
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      failureThreshold: 8
+===
+
+
+Liveness Probes:
+If an app isn't dead but isn't working properly, liveness probes can help us.
+Same as livenessProbe except it's livenessProbe.
+
+
+Container logging:
+For single container pods:
+kubectl logs -f METADATA_NAME # from pod definition
+
+For multi-container pods:
+kubectl logs -f METADATA_NAME CONTAINER_NAME
+
+
+Monitoring and Debug:
+Enable metrics server:
+git clone https://github.com/kubernetes-incubator/metrics-serve
+kubectl create -f deploy/1.8+/
+kubectl top node
+kubectl top pod
+
+
