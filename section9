@@ -120,6 +120,59 @@ Check auth mode:
 kubectl create role -h
 kubectl create rolebinding -h
 
-How do you specify namespace when fucking with roles/rolebindings?
+Roles are for namespaced resources only
+ClusterRoles can be for namespaced resources or across all namespaces or for cluster-scoped resources
 
+
+How do you specify namespace when fucking with roles/rolebindings?
+If you don't specify namespace, they are created in the default namespace.
+You can specify namespace in metadata
+
+
+CLUSTER ROLES:
+- Resources are namespaced or cluster-scoped
+- Cluster-scoped: List: kubectl api-resources --namespaced=false
+  - nodes
+  - PV
+  - clusterroles
+  - CRBindings
+  - CSRs
+  - namespaces
+
+=== cluster-admin-role.yml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-admin
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["list","get","create"]
+===
+
+=== cluster-role-binding.yml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: cluster-admin-role
+
+
+Admission Controllers:
+
+An admission controller is a piece of code that intercepts requests to the Kubernetes API server prior to persistence of the object, but after the request is authenticated and authorized.
+
+Admission controllers may be validating, mutating, or both. Mutating controllers may modify objects related to the requests they admit; validating controllers may not.
+
+View adm conts:
+kube-apiserver -h | grep enable-admission-plugins
+OR
+kubeadm based setup:
+kubectl exec -n kube-system kube-apiserver-controlplane -- kube-apiserver -h | grep enable-admission-plugins
+
+To enable/disable admission controllers, use:
+kube-apiserver.service or /etc/kubernetes/manifests/kube-apiserver.yaml (for kubeadm):
+--enable-admission-plugins=blah
+--disable-admission-plugins=blah
+
+To check what adm conts are enabled/disabled:
+ps -ef | grep kube-apiserver | grep admission-plugins
 
