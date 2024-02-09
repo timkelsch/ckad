@@ -176,3 +176,133 @@ kube-apiserver.service or /etc/kubernetes/manifests/kube-apiserver.yaml (for kub
 To check what adm conts are enabled/disabled:
 ps -ef | grep kube-apiserver | grep admission-plugins
 
+
+Validating and Mutating Admission Controllers:
+
+- Usually mutating ones are invoked first so that validator can work properly
+- External AdmConts: 
+  - MutatingAdmissionWebhook
+  - ValidatingAdmissionWebhook
+- How to set this up:
+  - Set up an admission webhook server
+    - Receives a request object
+    - Returns a response object saying whether the request was granted
+  - Can be run externally or on K8S itself with a service so it is available externallly
+=== val-webhook.yml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: "pod-policy.example.com"
+webhooks:
+- name: "pod-policy.example.com"
+  clientConfig:
+    service:
+      namespace: "webhook-namespace"
+      name: "webhook-service"
+    caBundle: "asdfasfa"
+  rules:
+  - apiGroups: [""]
+    apiVersions: ["v1"]
+    operations: ["CREATE"]
+    resources: ["pods"]
+    scope: "Namespaced"
+===
+
+
+API Versions:
+
+v1: Stable
+alpha:
+  - Cannot enable without flags in runtime config
+  - May have bugs
+  - May be dropped in future releases
+beta:
+  - Has e2e tests
+  - May have minor bugs
+  - Commitment to move to GA
+
+Preferred API version: find with kubectl explain [deployment/object]
+
+To convert yml files to a new version:
+kubectl convert -f old-file --output-version new-api
+kubectl convert -f nginx.yml --output-version apps/v1
+
+To install kubectl convert:
+Check k8s documentation
+
+
+API Deprecation:
+1: API elements may only be removed by incrementing the version of API group. IE, move from v1alpha1 to v1alpha2 and remove.
+2: API objects must be able to round trip between API versions in a given release without information loss, with the exception of whole REST resources that do not exist in some versions. IE if you create a new field in a new version of an object, you must also add it in the previous version.
+3. API version in a given track may not be deprecated until a new API version at least as stable is released.
+4a. Other than the most recent versions in each track, old API versions must be supported after their announced deprecation for:
+- GA: 12 months or 3 releases (whichever is longer)
+- Beta: 9 months or 3 releases (longer)
+- Alpha: 0 Releases
+4b. The preferred API version and the storage version for a given group may not advance until after a release has been made that supports both the new version and the previous version. So when you release a new version, preferred cannot advance to the latest version.
+
+
+What is the relationship between api groups, resources, fields?
+
+Find what API group a resource belongs to:
+k explain [resource_name]
+
+How to find the preferred version of an API:
+k proxy 8001 &
+curl localhost:8081/apis/authorization.k8s.io
+
+To enable alpha API, add the following to /etc/kubernetes/manifests/kube-apiserver.yml:
+--runtime-config=[service]/[version]
+
+
+CUSTOM RESOURCE DEFINITIONS
+
+When you run kubectl commands, you're just reading/modifying data in ETCD.
+It's the deployment/pod/whatever controller that does the actual work. 
+It monitors ETCD and makes the necessary changes.
+Custom resource definition tells K8S about your API
+
+=== flightTicket-custom-definition.yml
+apiVerion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: flighttickets.flights.com
+spec:
+  scope: Namespaced
+  group: flights.com
+  names:
+    kind: FlightTicket
+    singular: flightticket
+    plural: flightticket
+    shortNames:
+    - ft
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+	properties:
+	  spec:
+	    type: object
+	    properties:
+	      from:
+	        type: string
+	      to:
+	        type: string
+	      number:
+	        type: integer
+		minimum: 1
+		maximum: 10
+===
+
+If you create this CRD and flightTicket, it will be stored in ETCD but nothing else happens because there is no controller for this resource type.
+
+
+CUSTOM CONTROLLERS
+
+
+OPERATOR FRAMEWORK
+
+Encompasses the customResourceDefinition and controller
