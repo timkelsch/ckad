@@ -1,0 +1,45 @@
+HELM
+
+Basically a package manager for K8S
+Has a release manager
+Let's us treat our thing as an app instead of a collection of objects.
+
+helm install app
+helm upgrade app
+helm rollback app
+helm uninstall app
+
+Helm Install Prereqs:
+K8S installed
+Kubectl installed
+
+Helm Install:
+sudo snap install helm --classic
+apt - copy from docs
+
+
+CONCEPTS
+
+Steps:
+1. Convert any variables in your K8S object files to template style: {{ .Values.variable }}
+2. Define those variables in the values.yml file
+3. Use your own chart of use an existing one at artifacthub.io
+   - helm search hub search_term
+4. Create another repo:
+   - helm repo add bitnami https://charts.bitnami.com/bitnami
+5. Search it: helm search repo search_term (makes no sense)
+6. List repos: helm repo list
+
+To install an app:
+helm install release_name chart_name
+
+Releases are independent of each other
+
+List installed packages:
+helm list
+
+Download but not install:
+helm pull --untar bitnami/wordpress
+
+Install drupal from bitnami:
+
